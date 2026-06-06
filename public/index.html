@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FiveWare Admin Panel</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #ffffff; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h1 { color: #f213a4; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        button { background-color: #f213a4; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        button:hover { background-color: #d1108d; }
+        input[type="text"], input[type="password"] { padding: 10px; border-radius: 4px; border: 1px solid #333; background-color: #2a2a2a; color: white; margin-right: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #333; }
+        th { background-color: #2a2a2a; }
+        .status-active { color: #4caf50; }
+        .status-banned { color: #f44336; }
+        .action-btn { background-color: #333; margin-right: 5px; font-size: 12px; padding: 5px 10px; }
+        .action-btn:hover { background-color: #555; }
+        .login-container { display: flex; align-items: center; justify-content: center; height: 100vh; }
+        .login-box { background-color: #1e1e1e; padding: 40px; border-radius: 8px; text-align: center; }
+        #app { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="login" class="login-container">
+    <div class="login-box">
+        <h2 style="color: #f213a4;">Admin Login</h2>
+        <input type="password" id="password" placeholder="Admin Password (admin)">
+        <button onclick="login()">Login</button>
+        <p id="login-error" style="color: red; display: none;">Invalid Password</p>
+    </div>
+</div>
+
+<div id="app" class="container">
+    <h1>FiveWare Admin Dashboard</h1>
+    <div style="margin-bottom: 20px;">
+        <input type="text" id="appName" placeholder="App Name (e.g. Spoofer)">
+        <button onclick="generateKey()">Generate New Key</button>
+        <button onclick="loadKeys()" style="float: right; background-color: #333;">Refresh</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Key</th>
+                <th>App</th>
+                <th>Status</th>
+                <th>HWID</th>
+                <th>Last IP</th>
+                <th>Last Used</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="keysTableBody">
+            <!-- Data will be populated here -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    let token = '';
+    const API_BASE = '/api/admin';
+
+    function login() {
+        const pass = document.getElementById('password').value;
+        if (!pass) return;
+        token = 'Bearer ' + pass;
+        
+        // Test auth
+        fetch(`${API_BASE}/keys`, { headers: { 'Authorization': token } })
+            .then(res => {
+                if (res.ok) {
+                    document.getElementById('login').style.display = 'none';
+                    document.getElementById('app').style.display = 'block';
+                    loadKeys();
+                } else {
+                    document.getElementById('login-error').style.display = 'block';
+                }
+            });
+    }
+
+    function loadKeys() {
+        fetch(`${API_BASE}/keys`, { headers: { 'Authorization': token } })
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById('keysTableBody');
+                tbody.innerHTML = '';
+                data.forEach(k => {
+                    const statusClass = k.status === 'active' ? 'status-active' : 'status-banned';
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${k.id}</td>
+                            <td style="font-family: monospace;">${k.key_string}</td>
+                            <td>${k.app_name}</td>
+                            <td class="${statusClass}">${k.status.toUpperCase()}</td>
+                            <td style="font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis;" title="${k.hwid || ''}">${k.hwid || '<i>Unbound</i>'}</td>
+                            <td>${k.last_ip || '-'}</td>
+                            <td>${k.last_used ? new Date(k.last_used).toLocaleString() : '-'}</td>
+                            <td>
+                                ${k.status === 'active' 
+                                    ? `<button class="action-btn" onclick="updateStatus(${k.id}, 'banned')">Ban</button>`
+                                    : `<button class="action-btn" onclick="updateStatus(${k.id}, 'active')">Unban</button>`}
+                                <button class="action-btn" onclick="resetHwid(${k.id})">Reset HWID</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            });
+    }
+
+    function generateKey() {
+        const appName = document.getElementById('appName').value;
+        fetch(`${API_BASE}/keys`, {
+            method: 'POST',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ app_name: appName })
+        }).then(() => loadKeys());
+    }
+
+    function updateStatus(id, status) {
+        fetch(`${API_BASE}/keys/${id}`, {
+            method: 'PUT',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        }).then(() => loadKeys());
+    }
+
+    function resetHwid(id) {
+        if(!confirm("Are you sure you want to reset the HWID for this key?")) return;
+        fetch(`${API_BASE}/keys/${id}`, {
+            method: 'PUT',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hwid: null })
+        }).then(() => loadKeys());
+    }
+</script>
+
+</body>
+</html>
